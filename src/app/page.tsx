@@ -29,6 +29,7 @@ const emptyStats: DatasetStatistics = {
 export default async function HomePage() {
   let stats = emptyStats;
   let top: RarityAnalysis[] = [];
+  let exampleNames: string[] = [];
   let loadError: string | null = null;
 
   try {
@@ -36,12 +37,21 @@ export default async function HomePage() {
     const rankings = await mainnetProvider.getRankings({
       sortBy: "score",
       sortDir: "desc",
-      pageSize: 8,
+      pageSize: 12,
       page: 1,
     });
-    top = rankings.items
-      .filter((a) => !a.diamond.isDemo && a.diamond.source === "node")
-      .slice(0, 5);
+    const mainnetItems = rankings.items.filter(
+      (a) => !a.diamond.isDemo && a.diamond.source === "node"
+    );
+    top = mainnetItems.slice(0, 5);
+    // Real indexed HACD names only (valid 6-letter chain names)
+    exampleNames = [
+      ...new Set(
+        mainnetItems
+          .map((a) => a.diamond.name.toUpperCase())
+          .filter((n) => /^[WTYUIAHXVMEKBSZN]{6}$/.test(n))
+      ),
+    ].slice(0, 8);
   } catch (e) {
     loadError = e instanceof Error ? e.message : "Failed to load mainnet data";
     console.error("[home]", e);
@@ -64,7 +74,7 @@ export default async function HomePage() {
         </p>
 
         <div className="mx-auto mt-8 max-w-3xl">
-          <SearchPanel />
+          <SearchPanel examples={exampleNames} />
         </div>
       </section>
 

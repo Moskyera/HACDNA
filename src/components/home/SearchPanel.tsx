@@ -4,10 +4,24 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Sparkles, SlidersHorizontal } from "lucide-react";
 
-const EXAMPLES = ["INMHKM", "WWWWWW", "ABCCBA", "42", "MYTHIC"];
+/** Verified mainnet HACD names (exist on chain) — fallback if server list empty */
+const FALLBACK_EXAMPLES = [
+  "NHMYYM",
+  "HNUMMY",
+  "WKEBKX",
+  "XUTWME",
+  "AMYBVH",
+  "INMHKM",
+  "VNNHHI",
+];
 const RECENT_KEY = "hacd-recent-searches";
 
-export function SearchPanel() {
+export function SearchPanel({
+  examples,
+}: {
+  /** Real mainnet HACD names only */
+  examples?: string[];
+} = {}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
@@ -21,6 +35,15 @@ export function SearchPanel() {
   });
   const [manualLoading, setManualLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const exampleNames = (
+    examples?.length
+      ? examples
+      : FALLBACK_EXAMPLES
+  )
+    .map((n) => n.trim().toUpperCase())
+    .filter((n) => /^[WTYUIAHXVMEKBSZN]{6}$/i.test(n))
+    .slice(0, 8);
 
   useEffect(() => {
     try {
@@ -114,19 +137,21 @@ export function SearchPanel() {
         <p className="mt-3 text-sm text-rose-300">{error}</p>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-slate-500">Examples:</span>
-        {EXAMPLES.map((ex) => (
-          <button
-            key={ex}
-            type="button"
-            onClick={() => analyze(ex)}
-            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-cyan-100 transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
+      {exampleNames.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-500">Examples:</span>
+          {exampleNames.map((ex) => (
+            <button
+              key={ex}
+              type="button"
+              onClick={() => analyze(ex)}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs tracking-wider text-cyan-100 transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+      )}
 
       {recent.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
