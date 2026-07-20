@@ -1,0 +1,304 @@
+/* Exact port of explorer.hacash.org #card rules (scoped) */
+
+@import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap");
+
+.hacd-meta-card-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: visible;
+}
+
+.hacd-meta-card {
+  --color-1: #041b2d;
+  --color-2: #004e9a;
+  --color-3: #8a5082;
+  --color-4: #6f5f90;
+  --color-5: #8a5082;
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  overflow: visible;
+}
+
+.hacd-meta-card .cdit {
+  position: relative;
+  width: 800px;
+  height: 500px;
+  transform-origin: top left;
+  overflow: visible;
+}
+
+.hacd-meta-card .cdcon {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  width: 800px;
+  height: 500px;
+  border-radius: 30px;
+  background-color: #fff;
+  box-shadow:
+    1px 1px 1px #00000066,
+    3px 3px 6px #ffffff99 inset,
+    -3px -3px 6px #00000022 inset,
+    0 0 30px #00000066;
+}
+
+.hacd-meta-card .meta {
+  z-index: 5;
+  position: absolute;
+  top: 8%;
+  left: 5%;
+  display: block;
+  width: 90%;
+  height: 84%;
+}
+
+.hacd-meta-card .meta > div,
+.hacd-meta-card .meta > p {
+  position: absolute;
+  font-family: monospace;
+  margin: 0;
+  padding: 0;
+}
+
+.hacd-meta-card .meta > div > *,
+.hacd-meta-card .meta > p > * {
+  font-family: inherit;
+  font-size: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  color: inherit;
+  line-height: inherit;
+}
+
+.hacd-meta-card .meta > div b,
+.hacd-meta-card .meta > p b {
+  font-weight: 700;
+}
+
+.hacd-meta-card .meta .bid {
+  font-size: 14px;
+  line-height: 14px;
+  padding: 4px 12px;
+  bottom: -10px;
+  right: -10px;
+  text-align: right;
+  border-radius: 16px;
+  background-image: linear-gradient(
+    156deg,
+    #00000066,
+    transparent,
+    transparent,
+    #000000cc
+  );
+  color: #ffffff33;
+  text-shadow: 1px 1px 0 #00000066;
+  overflow: hidden;
+  box-shadow: 2px 2px 4px #00000066;
+}
+
+.hacd-meta-card .meta .blk {
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  line-height: 18px;
+  top: 70px;
+  left: -2px;
+  color: #00000066;
+}
+
+.hacd-meta-card .meta .blk b {
+  font-size: 16px;
+  color: #00000088;
+}
+
+.hacd-meta-card .meta .num {
+  top: 0;
+  font-size: 26px;
+  line-height: 26px;
+  color: #ffffff66;
+  text-shadow: 0 0 20px #fff, 0 0 3px #fff, 0 0 10px #fff;
+  width: 100%;
+  text-align: center;
+}
+
+.hacd-meta-card .meta .clb {
+  width: 50px;
+  height: 220px;
+  left: 40px;
+  top: 70px;
+  border-radius: 0 100px;
+  overflow: hidden;
+}
+
+.hacd-meta-card .meta .dn {
+  font-size: 55px;
+  line-height: 55px;
+  font-family: "VT323", monospace;
+  top: -11px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  text-transform: uppercase;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-color: #fff;
+  text-shadow: 1px 1px 1px #00000022;
+}
+
+.hacd-meta-card .meta .vg {
+  width: 100%;
+  bottom: -6px;
+  left: 0;
+  color: #fff;
+  font-size: 24px;
+  line-height: 24px;
+  text-align: center;
+  transform: scaleY(1.6);
+  text-shadow: 1px 1px 1px #00000066, 1px 1px 10px #000000bb;
+  font-family: "Share Tech Mono", "ShareTechMono", monospace;
+}
+
+.hacd-meta-card .meta .gmn {
+  writing-mode: vertical-rl;
+  left: 94px;
+  bottom: -10px;
+  font-size: 12px;
+  transform: scaleY(0.9);
+  color: green;
+}
+
+.hacd-meta-card .meta .lgn {
+  writing-mode: vertical-rl;
+  right: 42px;
+  top: 152px;
+  font-size: 14px;
+  color: #ffffff99;
+  transform: scaleY(1);
+  transform-origin: top;
+  letter-spacing: 12.3px;
+  font-weight: 700;
+}
+
+.hacd-meta-card .meta .lg {
+  line-height: 25px;
+  font-size: 25px;
+  top: 150px;
+  right: -50px;
+  transform: scaleX(0.3333);
+  transform-origin: top;
+  text-transform: uppercase;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  background-color: #fff;
+  text-shadow: 1px 1px 1px #00000022;
+}
+
+.hacd-meta-card .meta .cll {
+  height: 195px;
+  width: 10px;
+  border-radius: 100px;
+  background: #000;
+  right: 74px;
+  top: 153px;
+}
+
+.hacd-meta-card .ldz {
+  position: absolute;
+  width: 400px;
+  height: 48px;
+  background-color: #ffffff11;
+  box-shadow: 0 6px 16px 2px #00000022 inset;
+  transform: rotate(45deg);
+  right: -100px;
+  top: 61px;
+  z-index: 2;
+  background-image: linear-gradient(45deg, #00000011 50%, transparent 0);
+  background-size: 12px 12px;
+}
+
+.hacd-meta-card .oh {
+  z-index: 4;
+  position: absolute;
+  overflow: hidden;
+}
+
+.hacd-meta-card .oh.h8 {
+  top: 30px;
+  right: 30px;
+  border-radius: 1000px;
+  box-shadow: 0 0 10px #fff;
+}
+
+.hacd-meta-card .oh.h8 svg {
+  display: block;
+}
+
+.hacd-meta-card .oh.h9 {
+  left: 30px;
+  bottom: 30px;
+  background-color: #ffffff66;
+}
+
+.hacd-meta-card .oh.h9 svg {
+  display: block;
+}
+
+.hacd-meta-card .ibg,
+.hacd-meta-card .img {
+  width: 500px;
+  height: 500px;
+}
+
+.hacd-meta-card .img {
+  position: relative;
+  z-index: 2;
+  margin: auto;
+}
+
+.hacd-meta-card .img svg {
+  display: block;
+  width: 500px;
+  height: 500px;
+}
+
+.hacd-meta-card .ibg {
+  z-index: 1;
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: scale(2);
+  filter: blur(30px);
+}
+
+.hacd-meta-card .ibg svg {
+  display: block;
+  width: 500px;
+  height: 500px;
+}
+
+.hacd-meta-card-caption {
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+  max-width: 640px;
+  line-height: 1.45;
+}
+
+.hacd-meta-card-loading {
+  width: 100%;
+  max-width: 800px;
+  height: 500px;
+  border-radius: 30px;
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+  border: 1px solid rgba(148, 163, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 13px;
+}

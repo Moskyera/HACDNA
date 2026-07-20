@@ -1,0 +1,106 @@
+// PostgreSQL schema for production indexing of HACD diamonds.
+// Demo app runs without a live DB (in-memory mock provider).
+//
+// Setup:
+//   1. Set DATABASE_URL in .env
+//   2. pnpm add prisma @prisma/client
+//   3. npx prisma migrate dev --name init
+//   4. Implement a PrismaHacdProvider that implements HacdDataProvider
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model HacdDiamond {
+  id               String   @id
+  name             String   @unique
+  number           Int      @unique
+  visualGene       String?
+  lifeGene         String?
+  shape            String?
+  color            String?
+  style            String?
+  literal          String?
+  pattern          String?
+  symmetry         Boolean?
+  uniqueChars      Int?
+  maxRepeat        Int?
+  bornBlockHeight  Int?
+  bidAmountHac     Float?
+  averageBurnHac   Float?
+  ownerAddress     String?
+  minerAddress     String?
+  inscriptions     String?
+  mintPosition     Float?
+  isDemo           Boolean  @default(false)
+  source           String   @default("explorer")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  rarityScores     RarityScoreHistory[]
+  cachedAnalysis   CachedAnalysis?
+
+  @@index([number])
+  @@index([shape])
+  @@index([color])
+  @@index([style])
+  @@index([pattern])
+}
+
+model TraitFrequency {
+  id              String   @id @default(cuid())
+  traitType       String
+  traitValue      String
+  count           Int
+  frequency       Float
+  totalPopulation Int
+  updatedAt       DateTime @updatedAt
+
+  @@unique([traitType, traitValue])
+  @@index([traitType])
+}
+
+model RarityScoreHistory {
+  id           String   @id @default(cuid())
+  diamondId    String
+  diamond      HacdDiamond @relation(fields: [diamondId], references: [id], onDelete: Cascade)
+  rarityScore  Float
+  percentile   Float
+  category     String
+  confidence   Float
+  calculatedAt DateTime @default(now())
+
+  @@index([diamondId, calculatedAt])
+}
+
+model CachedAnalysis {
+  id             String   @id @default(cuid())
+  diamondId      String   @unique
+  diamond        HacdDiamond @relation(fields: [diamondId], references: [id], onDelete: Cascade)
+  payloadJson    String   // JSON blob of RarityAnalysis
+  rarityScore    Float
+  category       String
+  percentile     Float
+  confidence     Float
+  calculatedAt   DateTime @default(now())
+  expiresAt      DateTime?
+
+  @@index([rarityScore])
+  @@index([category])
+}
+
+model SyncStatus {
+  id            String   @id @default("primary")
+  source        String
+  lastSyncedAt  DateTime?
+  diamondCount  Int      @default(0)
+  isDemo        Boolean  @default(true)
+  healthy       Boolean  @default(true)
+  message       String?
+  updatedAt     DateTime @updatedAt
+}
