@@ -2,7 +2,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { HacdDiamond } from "@/lib/types/hacd";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+/**
+ * On Vercel / serverless the filesystem is read-only (except /tmp).
+ * Keep index in memory and only attempt disk when not on Vercel.
+ */
+const isServerless =
+  process.env.VERCEL === "1" ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME != null ||
+  process.env.NEXT_RUNTIME === "edge";
+
+const DATA_DIR = isServerless
+  ? path.join("/tmp", "hacdna")
+  : path.join(process.cwd(), "data");
 const INDEX_FILE = path.join(DATA_DIR, "mainnet-index.json");
 
 export interface MainnetIndexFile {
@@ -17,7 +28,11 @@ export interface MainnetIndexFile {
 const memory: { index: MainnetIndexFile | null } = { index: null };
 
 export async function ensureDataDir() {
-  await fs.mkdir(DATA_DIR, { recursive: true });
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+  } catch {
+    /* ignore on read-only FS */
+  }
 }
 
 export async function loadIndex(): Promise<MainnetIndexFile | null> {
@@ -33,9 +48,17 @@ export async function loadIndex(): Promise<MainnetIndexFile | null> {
 }
 
 export async function saveIndex(index: MainnetIndexFile): Promise<void> {
-  await ensureDataDir();
+  // Always keep in-memory (works on Vercel cold/warm instances for the process life)
   memory.index = index;
-  await fs.writeFile(INDEX_FILE, JSON.stringify(index), "utf8");
+  try {
+    await ensureDataDir();
+    await fs.writeFile(INDEX_FILE, JSON.stringify(index), "utf8");
+  } catch (e) {
+    // Expected on some serverless environments — memory still has the data
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[index-store] disk write skipped:", e);
+    }
+  }
 }
 
 export function mergeDiamonds(
@@ -50,4 +73,8 @@ export function mergeDiamonds(
 
 export function clearMemoryIndex() {
   memory.index = null;
+}
+
+export function isServerlessRuntime() {
+  return isServerless;
 }

@@ -2,39 +2,49 @@ import { SearchPanel } from "@/components/home/SearchPanel";
 import { TopScoredSection } from "@/components/home/TopScoredSection";
 import { DemoBadge } from "@/components/ui/DemoBadge";
 import { mainnetProvider } from "@/lib/providers/mainnet-provider";
-import type { RarityAnalysis } from "@/lib/types/hacd";
+import type { DatasetStatistics, RarityAnalysis } from "@/lib/types/hacd";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const emptyStats: DatasetStatistics = {
+  totalDiamonds: 0,
+  isDemo: false,
+  lastSyncedAt: null,
+  dataSource: "mainnet (unavailable)",
+  categoryDistribution: {
+    Common: 0,
+    Uncommon: 0,
+    Rare: 0,
+    "Very Rare": 0,
+    "Extremely Rare": 0,
+    Legendary: 0,
+  },
+  averageScore: 0,
+  topPercentileThreshold: 0,
+  traitFrequencies: [],
+};
 
 export default async function HomePage() {
-  const provider = mainnetProvider;
-  const stats = await provider.getStatistics();
-  const rankings = await provider.getRankings({
-    sortBy: "score",
-    sortDir: "desc",
-    pageSize: 20,
-    page: 1,
-  });
+  let stats = emptyStats;
+  let top: RarityAnalysis[] = [];
+  let loadError: string | null = null;
 
-  // Only real chain diamonds; refresh from node so cards have full metadata
-  const candidates = rankings.items
-    .filter((a) => !a.diamond.isDemo && a.diamond.source === "node")
-    .slice(0, 5);
-
-  const top: RarityAnalysis[] = [];
-  for (const item of candidates) {
-    try {
-      const live = await provider.getDiamond(item.diamond.name);
-      if (live) {
-        const rarity = await provider.getRarity(live.name);
-        top.push(rarity ?? { ...item, diamond: live });
-      } else {
-        top.push(item);
-      }
-    } catch {
-      top.push(item);
-    }
+  try {
+    stats = await mainnetProvider.getStatistics();
+    const rankings = await mainnetProvider.getRankings({
+      sortBy: "score",
+      sortDir: "desc",
+      pageSize: 8,
+      page: 1,
+    });
+    top = rankings.items
+      .filter((a) => !a.diamond.isDemo && a.diamond.source === "node")
+      .slice(0, 5);
+  } catch (e) {
+    loadError = e instanceof Error ? e.message : "Failed to load mainnet data";
+    console.error("[home]", e);
   }
 
   return (
@@ -58,7 +68,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Honesty banner about scoring */}
       <section className="rounded-2xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-50/90 md:px-6">
         <strong className="text-white">About Rarity Score:</strong> How rare
         HIP-5 mining outcomes are (shape, color, style, pattern). Not an
@@ -67,6 +76,13 @@ export default async function HomePage() {
           Methodology
         </Link>
       </section>
+
+      {loadError && (
+        <section className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+          Could not load rankings right now ({loadError}). Search still works
+          for individual diamonds.
+        </section>
+      )}
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard

@@ -17,7 +17,6 @@ export interface NodeDiamondRaw {
   life_gene?: string;
   prev_hash?: string;
   born?: { height?: number; hash?: string };
-  /** older field names */
   mint_height?: number;
   inscriptions?: string[] | unknown[];
   inscription_items?: unknown[];
@@ -41,20 +40,34 @@ const DEFAULT_BASE =
   process.env.HACASH_NODE_RPC_URL?.replace(/\/$/, "") ||
   "http://nodeapi.hacash.org";
 
-export class HacashNodeClient {
-  constructor(public readonly baseUrl: string = DEFAULT_BASE) {}
-
-  private async getJson<T>(path: string, init?: RequestInit): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    const res = await fetch(url, {
+async function fetchWithTimeout(
+  url: string,
+  ms = 12_000,
+  init?: RequestInit
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, {
       ...init,
+      signal: controller.signal,
+      cache: "no-store",
       headers: {
         Accept: "application/json",
         ...(init?.headers ?? {}),
       },
-      // Next.js: avoid indefinite static cache of chain data
-      cache: "no-store",
     });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export class HacashNodeClient {
+  constructor(public readonly baseUrl: string = DEFAULT_BASE) {}
+
+  private async getJson<T>(path: string, timeoutMs = 12_000): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const res = await fetchWithTimeout(url, timeoutMs);
     if (!res.ok) {
       throw new Error(`Hacash node HTTP ${res.status} for ${path}`);
     }
@@ -62,16 +75,17 @@ export class HacashNodeClient {
   }
 
   async latest(): Promise<NodeLatest> {
-    return this.getJson<NodeLatest>("/query/latest");
+    return this.getJson<NodeLatest>("/query/latest", 10_000);
   }
 
   async supply(): Promise<NodeSupply> {
-    return this.getJson<NodeSupply>("/query/supply");
+    return this.getJson<NodeSupply>("/query/supply", 10_000);
   }
 
   async diamondByName(name: string): Promise<NodeDiamondRaw | null> {
     const data = await this.getJson<NodeDiamondRaw>(
-      `/query/diamond?name=${encodeURIComponent(name.toUpperCase())}`
+      `/query/diamond?name=${encodeURIComponent(name.toUpperCase())}`,
+      12_000
     );
     if (data.ret !== 0 || !data.name) return null;
     return data;
@@ -79,7 +93,8 @@ export class HacashNodeClient {
 
   async diamondByNumber(number: number): Promise<NodeDiamondRaw | null> {
     const data = await this.getJson<NodeDiamondRaw>(
-      `/query/diamond?number=${number}`
+      `/query/diamond?number=${number}`,
+      12_000
     );
     if (data.ret !== 0 || !data.name) return null;
     return data;
@@ -92,18 +107,13 @@ export class HacashNodeClient {
     if (!Number.isNaN(asNum) && /^\d+$/.test(raw.replace(/^#/, ""))) {
       return this.diamondByNumber(asNum);
     }
-    // Manual analysis ids
     if (raw.toUpperCase().startsWith("MANUAL-")) return null;
     return this.diamondByName(raw.replace(/^MANUAL-/, ""));
   }
 
-  /**
-   * Fetch many diamonds by number with limited concurrency.
-   * Skips missing numbers silently.
-   */
   async fetchByNumbers(
     numbers: number[],
-    concurrency = 8
+    concurrency = 6
   ): Promise<NodeDiamondRaw[]> {
     const out: NodeDiamondRaw[] = [];
     let i = 0;
@@ -114,7 +124,7 @@ export class HacashNodeClient {
           const d = await this.diamondByNumber(n);
           if (d) out.push(d);
         } catch {
-          /* skip transient errors */
+          /* skip */
         }
       }
     }

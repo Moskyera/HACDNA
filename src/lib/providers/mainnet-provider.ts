@@ -4,6 +4,7 @@ import {
 } from "@/lib/hacash/client";
 import { mapNodeDiamond } from "@/lib/hacash/mapper";
 import {
+  isServerlessRuntime,
   loadIndex,
   mergeDiamonds,
   saveIndex,
@@ -30,19 +31,15 @@ import type {
 } from "@/lib/types/hacd";
 import type { HacdDataProvider } from "@/lib/providers/types";
 
-function buildSampleNumbers(totalMinted: number, target = 400): number[] {
+function buildSampleNumbers(totalMinted: number, target = 80): number[] {
   const set = new Set<number>();
-  // Genesis / early
-  for (let n = 1; n <= Math.min(50, totalMinted); n++) set.add(n);
-  // Landmark numbers
-  for (const n of [100, 256, 512, 777, 1000, 1337, 2000, 5000, 10000, 20000, 50000, 100000]) {
+  for (let n = 1; n <= Math.min(20, totalMinted); n++) set.add(n);
+  for (const n of [100, 256, 512, 1000, 5000, 10000, 50000, 100000]) {
     if (n <= totalMinted) set.add(n);
   }
-  // Even spacing across full supply
-  const step = Math.max(1, Math.floor(totalMinted / Math.max(1, target - 100)));
+  const step = Math.max(1, Math.floor(totalMinted / Math.max(1, target)));
   for (let n = 1; n <= totalMinted; n += step) set.add(n);
-  // Recent tip
-  for (let n = Math.max(1, totalMinted - 120); n <= totalMinted; n++) set.add(n);
+  for (let n = Math.max(1, totalMinted - 30); n <= totalMinted; n++) set.add(n);
   return [...set].sort((a, b) => a - b);
 }
 
@@ -58,13 +55,26 @@ export class MainnetHacdProvider implements HacdDataProvider {
     this.client = client;
   }
 
-  /** Kick off background seeding without blocking the request path. */
+  private emptyIndex(
+    totalMinted = 0,
+    latestHeight = 0
+  ): MainnetIndexFile {
+    return {
+      version: 1,
+      source: this.client.baseUrl,
+      lastSyncedAt: null,
+      totalMinted,
+      latestHeight,
+      diamonds: [],
+    };
+  }
+
   private kickoffSeed(): void {
     if (this.seedPromise) return;
+    // On serverless avoid huge background jobs that get killed mid-way
+    if (isServerlessRuntime()) return;
     this.seedPromise = this.syncIndex({ mode: "seed" })
-      .catch((e) => {
-        console.error("[mainnet] seed failed", e);
-      })
+      .catch((e) => console.error("[mainnet] seed failed", e))
       .then(() => {
         this.seedPromise = null;
       });
@@ -73,11 +83,12 @@ export class MainnetHacdProvider implements HacdDataProvider {
   private async getOrCreateIndex(): Promise<MainnetIndexFile> {
     let index = await loadIndex();
     if (index) {
-      if (index.diamonds.length < 40) this.kickoffSeed();
+      if (!isServerlessRuntime() && index.diamonds.length < 20) {
+        this.kickoffSeed();
+      }
       return index;
     }
 
-    // First hit: create empty shell, seed in background
     let totalMinted = 0;
     let latestHeight = 0;
     try {
@@ -85,32 +96,30 @@ export class MainnetHacdProvider implements HacdDataProvider {
       totalMinted = latest.diamond;
       latestHeight = latest.height;
     } catch {
-      /* node temporarily down */
+      /* node down */
     }
-    index = {
-      version: 1,
-      source: this.client.baseUrl,
-      lastSyncedAt: null,
-      totalMinted,
-      latestHeight,
-      diamonds: [],
-    };
+    index = this.emptyIndex(totalMinted, latestHeight);
     await saveIndex(index);
     this.kickoffSeed();
     return index;
   }
 
-  /** Blocking seed only when rankings need a real sample. */
-  private async ensureSeeded(minCount = 30): Promise<MainnetIndexFile> {
+  /**
+   * Light seed suitable for Vercel: few parallel fetches, short runtime.
+   */
+  private async ensureSeeded(minCount = 8): Promise<MainnetIndexFile> {
     let index = await this.getOrCreateIndex();
     if (index.diamonds.length >= minCount) return index;
 
-    if (!this.seedPromise) {
-      this.seedPromise = this.syncIndex({ mode: "seed" }).then(() => {
-        this.seedPromise = null;
+    // Quick fill so homepage/rankings don't hang
+    try {
+      await this.syncIndex({
+        mode: "seed",
+        maxFetch: isServerlessRuntime() ? 12 : 40,
       });
+    } catch (e) {
+      console.error("[mainnet] quick seed failed", e);
     }
-    await this.seedPromise;
     index = (await loadIndex()) ?? index;
     return index;
   }
@@ -122,8 +131,12 @@ export class MainnetHacdProvider implements HacdDataProvider {
       const s = await this.client.supply();
       return s.minted_diamond;
     } catch {
-      const l = await this.client.latest();
-      return l.diamond;
+      try {
+        const l = await this.client.latest();
+        return l.diamond;
+      } catch {
+        return 0;
+      }
     }
   }
 
@@ -141,7 +154,7 @@ export class MainnetHacdProvider implements HacdDataProvider {
         diamondCount: index?.diamonds.length ?? 0,
         isDemo: false,
         healthy: true,
-        message: `Mainnet live. Chain diamonds: ${latest.diamond.toLocaleString()}, height ${latest.height.toLocaleString()}. Indexed locally: ${index?.diamonds.length ?? 0}.`,
+        message: `Mainnet live. Chain diamonds: ${latest.diamond.toLocaleString()}, height ${latest.height.toLocaleString()}. Indexed: ${index?.diamonds.length ?? 0}.`,
       };
     } catch (e) {
       return {
@@ -156,7 +169,7 @@ export class MainnetHacdProvider implements HacdDataProvider {
   }
 
   async listDiamonds(): Promise<HacdDiamond[]> {
-    const index = await this.ensureSeeded();
+    const index = await this.ensureSeeded(1);
     return index.diamonds;
   }
 
@@ -164,23 +177,14 @@ export class MainnetHacdProvider implements HacdDataProvider {
     const total = await this.totalMinted();
     const raw = await this.client.diamond(idOrNameOrNumber);
     if (!raw) return null;
-    const diamond = mapNodeDiamond(raw, total);
+    const diamond = mapNodeDiamond(raw, total || raw.number);
 
-    // Upsert into index asynchronously
-    const index = (await loadIndex()) ?? {
-      version: 1 as const,
-      source: this.client.baseUrl,
-      lastSyncedAt: new Date().toISOString(),
-      totalMinted: total,
-      latestHeight: 0,
-      diamonds: [],
-    };
+    const index = (await loadIndex()) ?? this.emptyIndex(total || raw.number);
     index.diamonds = mergeDiamonds(index.diamonds, [diamond]);
     index.totalMinted = Math.max(index.totalMinted, total, diamond.number);
     index.lastSyncedAt = new Date().toISOString();
     await saveIndex(index);
     this.analysisCache.delete(diamond.name);
-
     return diamond;
   }
 
@@ -191,7 +195,6 @@ export class MainnetHacdProvider implements HacdDataProvider {
     const cached = this.analysisCache.get(diamond.name);
     if (cached) return cached;
 
-    // Non-blocking: use whatever is indexed; seed continues in background
     const index = await this.getOrCreateIndex();
     const pool = this.poolWith(diamond, index);
     const analysis = analyzeDiamond(diamond, pool, {
@@ -265,8 +268,7 @@ export class MainnetHacdProvider implements HacdDataProvider {
   }
 
   async getRankings(filters: RankingFilters = {}): Promise<RankingResult> {
-    const index = await this.ensureSeeded();
-    // Only real mainnet diamonds (never demo/mock rows)
+    const index = await this.ensureSeeded(1);
     const chainDiamonds = index.diamonds.filter(
       (d) => !d.isDemo && d.source === "node"
     );
@@ -325,7 +327,10 @@ export class MainnetHacdProvider implements HacdDataProvider {
         case "percentile":
           return (a.percentile - b.percentile) * dir;
         default:
-          return (a.rarityScore - b.rarityScore) * (filters.sortDir === "asc" ? 1 : -1);
+          return (
+            (a.rarityScore - b.rarityScore) *
+            (filters.sortDir === "asc" ? 1 : -1)
+          );
       }
     });
 
@@ -344,7 +349,7 @@ export class MainnetHacdProvider implements HacdDataProvider {
   }
 
   async getStatistics(): Promise<DatasetStatistics> {
-    const index = await this.ensureSeeded();
+    const index = await this.ensureSeeded(1);
     const analyses = analyzeAll(index.diamonds, {
       lastSyncedAt: index.lastSyncedAt,
       dataSource: `mainnet:${this.client.baseUrl}`,
@@ -366,11 +371,21 @@ export class MainnetHacdProvider implements HacdDataProvider {
     const topIdx = Math.max(0, Math.ceil(sorted.length * 0.01) - 1);
     const table = buildFrequencyTable(index.diamonds);
 
+    // Prefer live supply if we have it
+    let totalDiamonds = index.totalMinted;
+    if (!totalDiamonds) {
+      try {
+        totalDiamonds = (await this.client.latest()).diamond;
+      } catch {
+        totalDiamonds = index.diamonds.length;
+      }
+    }
+
     return {
-      totalDiamonds: index.totalMinted,
+      totalDiamonds,
       isDemo: false,
       lastSyncedAt: index.lastSyncedAt,
-      dataSource: `${this.name} (indexed ${index.diamonds.length} / chain ${index.totalMinted})`,
+      dataSource: `${this.name} (indexed ${index.diamonds.length} / chain ${totalDiamonds})`,
       categoryDistribution,
       averageScore: analyses.length ? sum / analyses.length : 0,
       topPercentileThreshold: sorted[topIdx]?.rarityScore ?? 0,
@@ -380,35 +395,42 @@ export class MainnetHacdProvider implements HacdDataProvider {
 
   async recalculateRarity() {
     this.analysisCache.clear();
-    const result = await this.syncIndex({ mode: "expand" });
+    const result = await this.syncIndex({
+      mode: "expand",
+      maxFetch: isServerlessRuntime() ? 20 : 100,
+    });
     return {
       updated: result.indexed,
       at: result.lastSyncedAt,
     };
   }
 
-  /**
-   * Pull diamonds from mainnet into local index.
-   * seed: representative sample (~400)
-   * expand: denser sample + latest tip
-   */
-  async syncIndex(opts: { mode?: "seed" | "expand" } = {}) {
+  async syncIndex(opts: { mode?: "seed" | "expand"; maxFetch?: number } = {}) {
     const mode = opts.mode ?? "seed";
     const [latest, supply] = await Promise.all([
       this.client.latest(),
       this.client.supply().catch(() => null),
     ]);
     const totalMinted = supply?.minted_diamond ?? latest.diamond;
-    const target = mode === "seed" ? 350 : 800;
+    const target = mode === "seed" ? 80 : 200;
     const numbers = buildSampleNumbers(totalMinted, target);
 
     const existing = await loadIndex();
     const already = new Set((existing?.diamonds ?? []).map((d) => d.number));
     const toFetch = numbers.filter((n) => !already.has(n));
 
-    // Cap per run so first seed stays interactive
-    const batch = toFetch.slice(0, mode === "seed" ? 60 : 250);
-    const raws = await this.client.fetchByNumbers(batch, 12);
+    const defaultMax = isServerlessRuntime()
+      ? mode === "seed"
+        ? 12
+        : 20
+      : mode === "seed"
+        ? 40
+        : 100;
+    const batch = toFetch.slice(0, opts.maxFetch ?? defaultMax);
+    const raws = await this.client.fetchByNumbers(
+      batch,
+      isServerlessRuntime() ? 4 : 8
+    );
     const mapped = raws.map((r) => mapNodeDiamond(r, totalMinted));
 
     const diamonds = mergeDiamonds(existing?.diamonds ?? [], mapped);
@@ -437,7 +459,7 @@ export class MainnetHacdProvider implements HacdDataProvider {
     const name = (input.name ?? "MANUAL").toUpperCase().slice(0, 6).padEnd(6, "X");
     const patternInfo = analyzeNamePattern(name);
     const number = input.number ?? 999999999;
-    const total = await this.totalMinted();
+    const total = (await this.totalMinted()) || number;
     const diamond: HacdDiamond = {
       id: `MANUAL-${name}`,
       name,
@@ -470,7 +492,7 @@ export class MainnetHacdProvider implements HacdDataProvider {
         mintPosition: number / Math.max(total, number),
       },
     };
-    const index = await this.ensureSeeded(1);
+    const index = await this.getOrCreateIndex();
     return analyzeDiamond(diamond, this.poolWith(diamond, index), {
       lastSyncedAt: index.lastSyncedAt,
       dataSource: "manual+mainnet-index",
